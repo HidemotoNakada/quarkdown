@@ -15,7 +15,9 @@ import com.quarkdown.core.function.value.data.Range
 import com.quarkdown.core.function.value.data.subList
 import com.quarkdown.core.function.value.wrappedAsValue
 import com.quarkdown.core.util.normalizeLineSeparators
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
 
 /**
  * `Data` stdlib module exporter.
@@ -24,6 +26,7 @@ import java.io.File
 val Data: Module =
     moduleOf(
         ::read,
+        ::backquote,
         ::csv,
     )
 
@@ -70,6 +73,56 @@ fun read(
 
     // Lines from the file in the given range.
     val lines = file.readLines()
+
+    // Check if the range is in bounds.
+    val bounds = Range(1, lines.size)
+    if (lineRange !in bounds) {
+        throw IllegalArgumentException("Invalid range $lineRange in bounds $bounds")
+    }
+
+    return lines
+        .subList(lineRange)
+        .joinToString("\n")
+        .wrappedAsValue()
+}
+
+/**
+ * @param command  specifies the command line to be invoked in the default shell.
+ *                `$SHELL -c COMMAND_STRING`.
+ * @return a List of String.
+ * @throws IllegalArgumentException if the invocation fails
+ */
+internal fun execString(command: String): List<String> {
+    val env = System.getenv()
+    val shell = env.getOrDefault("SHELL", "/bin/bash")
+    val pb = ProcessBuilder(shell, "-c", command)
+    val p = pb.start()
+
+    val inS = p.getInputStream()
+    val bInS = BufferedReader(InputStreamReader(inS))
+
+    var result = ArrayList<String>()
+    for (line in bInS.readLines()) {
+        result.add(line)
+    }
+    return result
+}
+
+/**
+ * @param command   specifies the command line to be invoked in the default shell.
+ * @param lineRange range of lines to extract from the file.
+ *                  If not specified or infinite, the whole file is read
+ * @return a string value of the text extracted from the file
+ * @throws IllegalArgumentException if [lineRange] is out of bounds
+ * @wiki File data
+ */
+fun backquote(
+    @Injected context: Context,
+    command: String,
+    @Name("lines") lineRange: Range = Range.INFINITE,
+): StringValue {
+    // execute the command line and retreive the output
+    val lines = execString(command)
 
     // Check if the range is in bounds.
     val bounds = Range(1, lines.size)
